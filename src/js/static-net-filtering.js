@@ -19,15 +19,16 @@
     Home: https://github.com/gorhill/uBlock
 */
 
-/* jshint bitwise: false, esnext: true */
-/* global µBlock */
+/* jshint bitwise: false, esnext: true, boss: true */
+/* global punycode, µBlock */
 
 // Older Safari throws an exception for const when it's used with 'use strict'.
-// 'use strict';
 
 /******************************************************************************/
 
 µBlock.staticNetFilteringEngine = (function(){
+
+'use strict';
 
 /******************************************************************************/
 
@@ -45,17 +46,17 @@ var µb = µBlock;
 // |      +---- bit 8-15: unused
 // +---- bit 15: never use! (to ensure valid unicode character)
 
-const BlockAction = 0 << 0;
-const AllowAction = 1 << 0;
-const ToggleAction = BlockAction ^ AllowAction;
+var BlockAction = 0 << 0;
+var AllowAction = 1 << 0;
+var ToggleAction = BlockAction ^ AllowAction;
 
-const Important = 1 << 1;
+var Important = 1 << 1;
 
-const AnyParty = 0 << 2;
-const FirstParty = 1 << 2;
-const ThirdParty = 2 << 2;
+var AnyParty = 0 << 2;
+var FirstParty = 1 << 2;
+var ThirdParty = 2 << 2;
 
-const AnyType = 1 << 4;
+var AnyType = 1 << 4;
 var typeNameToTypeValue = {
         'stylesheet':  2 << 4,
              'image':  3 << 4,
@@ -80,13 +81,13 @@ var typeOtherValue = typeNameToTypeValue.other;
 // The 2 lsb *must* be zeroed
 var allNetRequestTypesBitmap = (1 << (typeOtherValue >>> 4) + 2) - 4;
 
-const BlockAnyTypeAnyParty = BlockAction | AnyType | AnyParty;
-const BlockAnyType = BlockAction | AnyType;
-const BlockAnyParty = BlockAction | AnyParty;
+var BlockAnyTypeAnyParty = BlockAction | AnyType | AnyParty;
+var BlockAnyType = BlockAction | AnyType;
+var BlockAnyParty = BlockAction | AnyParty;
 
-const AllowAnyTypeAnyParty = AllowAction | AnyType | AnyParty;
-const AllowAnyType = AllowAction | AnyType;
-const AllowAnyParty = AllowAction | AnyParty;
+var AllowAnyTypeAnyParty = AllowAction | AnyType | AnyParty;
+var AllowAnyType = AllowAction | AnyType;
+var AllowAnyParty = AllowAction | AnyParty;
 
 var reHostnameRule = /^[0-9a-z][0-9a-z.-]+[0-9a-z]$/;
 var reHostnameToken = /^[0-9a-z]+/g;
@@ -1731,6 +1732,7 @@ var TokenEntry = function() {
 
 var FilterContainer = function() {
     this.reAnyToken = /[%0-9a-z]+/g;
+    this.reNextCompiledToken = /[^\13]+/g;
     this.tokens = [];
     this.filterParser = new FilterParser();
     this.reset();
@@ -2090,7 +2092,9 @@ FilterContainer.prototype.compileToAtomicFilter = function(filterClass, parsed, 
 FilterContainer.prototype.fromCompiledContent = function(text, lineBeg) {
     var lineEnd;
     var textEnd = text.length;
-    var line, fields, bucket, entry, factory, filter;
+    var line, bucket, entry, factory, filter;
+    var reNextCompiledToken = this.reNextCompiledToken;
+    var field0, field1, field2, field3;
 
     while ( lineBeg < textEnd ) {
         if ( text.charAt(lineBeg) !== 'n' ) {
@@ -2101,22 +2105,27 @@ FilterContainer.prototype.fromCompiledContent = function(text, lineBeg) {
             lineEnd = textEnd;
         }
         line = text.slice(lineBeg + 2, lineEnd);
-        fields = line.split('\v');
         lineBeg = lineEnd + 1;
 
         this.acceptedCount += 1;
 
-        bucket = this.categories[fields[0]];
-        if ( bucket === undefined ) {
-            bucket = this.categories[fields[0]] = Object.create(null);
-        }
-        entry = bucket[fields[1]];
+        reNextCompiledToken.lastIndex = 0;
+        field0 = reNextCompiledToken.exec(line)[0];
 
-        if ( fields[1] === '.' ) {
+        bucket = this.categories[field0];
+        if ( bucket === undefined ) {
+            bucket = this.categories[field0] = Object.create(null);
+        }
+        field1 = reNextCompiledToken.exec(line)[0];
+        entry = bucket[field1];
+
+        field2 = reNextCompiledToken.exec(line)[0];
+
+        if ( field1 === '.' ) {
             if ( entry === undefined ) {
                 entry = bucket['.'] = new FilterHostnameDict();
             }
-            if ( entry.add(fields[2]) === false ) {
+            if ( entry.add(field2) === false ) {
                 this.duplicateCount += 1;
             }
             continue;
@@ -2128,17 +2137,20 @@ FilterContainer.prototype.fromCompiledContent = function(text, lineBeg) {
         }
         this.duplicateBuster[line] = true;
 
-        factory = this.factories[fields[2]];
-        filter = factory.fromSelfie(fields[3]);
+        factory = this.factories[field2];
+
+        field3 = reNextCompiledToken.exec(line)[0];
+        filter = factory.fromSelfie(field3);
+
         if ( entry === undefined ) {
-            bucket[fields[1]] = filter;
+            bucket[field1] = filter;
             continue;
         }
         if ( entry.fid === '[]' ) {
             entry.add(filter);
             continue;
         }
-        bucket[fields[1]] = new FilterBucket(entry, filter);
+        bucket[field1] = new FilterBucket(entry, filter);
     }
     return textEnd;
 };

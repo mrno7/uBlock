@@ -19,7 +19,7 @@
     Home: https://github.com/gorhill/uBlock
 */
 
-/* jshint bitwise: false */
+/* jshint bitwise: false, boss: true */
 /* global µBlock */
 
 /******************************************************************************/
@@ -503,6 +503,7 @@ var makeHash = function(unhide, token, mask) {
 // Specific filers can be enforced before the main document is loaded.
 
 var FilterContainer = function() {
+    this.reNextCompiledToken = /[^\13]+/g;
     this.domainHashMask = (1 << 10) - 1; // 10 bits
     this.genericHashMask = (1 << 15) - 1; // 15 bits
     this.type0NoDomainHash = 'type0NoDomain';
@@ -700,7 +701,9 @@ FilterContainer.prototype.fromCompiledContent = function(text, lineBeg, skip) {
 
     var lineEnd;
     var textEnd = text.length;
-    var line, fields, filter, bucket;
+    var line, filter, bucket;
+    var reNextCompiledToken = this.reNextCompiledToken;
+    var field0, field1, field2, field3;
 
     while ( lineBeg < textEnd ) {
         if ( text.charAt(lineBeg) !== 'c' ) {
@@ -713,7 +716,6 @@ FilterContainer.prototype.fromCompiledContent = function(text, lineBeg, skip) {
         line = text.slice(lineBeg + 2, lineEnd);
         lineBeg = lineEnd + 1;
 
-
         this.acceptedCount += 1;
         if ( this.duplicateBuster.hasOwnProperty(line) ) {
             this.duplicateCount += 1;
@@ -721,90 +723,98 @@ FilterContainer.prototype.fromCompiledContent = function(text, lineBeg, skip) {
         }
         this.duplicateBuster[line] = true;
 
-        fields = line.split('\v');
+        reNextCompiledToken.lastIndex = 0;
+        field0 = reNextCompiledToken.exec(line)[0];
+        field1 = reNextCompiledToken.exec(line)[0];
 
         // h	ir	twitter.com	.promoted-tweet
-        if ( fields[0] === 'h' ) {
-            filter = new FilterHostname(fields[3], fields[2]);
-            bucket = this.hostnameFilters[fields[1]];
+        if ( field0 === 'h' ) {
+            field2 = reNextCompiledToken.exec(line)[0];
+            field3 = reNextCompiledToken.exec(line)[0];
+            filter = new FilterHostname(field3, field2);
+            bucket = this.hostnameFilters[field1];
             if ( bucket === undefined ) {
-                this.hostnameFilters[fields[1]] = filter;
+                this.hostnameFilters[field1] = filter;
             } else if ( bucket instanceof FilterBucket ) {
                 bucket.add(filter);
             } else {
-                this.hostnameFilters[fields[1]] = new FilterBucket(bucket, filter);
+                this.hostnameFilters[field1] = new FilterBucket(bucket, filter);
             }
             continue;
         }
 
         // lg	105	.largeAd
         // lg+	2jx	.Mpopup + #Mad > #MadZone
-        if ( fields[0] === 'lg' || fields[0] === 'lg+' ) {
-            filter = fields[0] === 'lg' ?
-                        new FilterPlain(fields[2]) :
-                        new FilterPlainMore(fields[2]);
-            bucket = this.lowGenericFilters[fields[1]];
+        if ( field0 === 'lg' || field0 === 'lg+' ) {
+            field2 = reNextCompiledToken.exec(line)[0];
+            filter = field0 === 'lg' ?
+                        new FilterPlain(field2) :
+                        new FilterPlainMore(field2);
+            bucket = this.lowGenericFilters[field1];
             if ( bucket === undefined ) {
-                this.lowGenericFilters[fields[1]] = filter;
+                this.lowGenericFilters[field1] = filter;
             } else if ( bucket instanceof FilterBucket ) {
                 bucket.add(filter);
             } else {
-                this.lowGenericFilters[fields[1]] = new FilterBucket(bucket, filter);
+                this.lowGenericFilters[field1] = new FilterBucket(bucket, filter);
             }
             continue;
         }
 
         // entity	selector
-        if ( fields[0] === 'e' ) {
-            bucket = this.entityFilters[fields[1]];
+        if ( field0 === 'e' ) {
+            field2 = reNextCompiledToken.exec(line)[0];
+            bucket = this.entityFilters[field1];
             if ( bucket === undefined ) {
-                this.entityFilters[fields[1]] = [fields[2]];
+                this.entityFilters[field1] = [field2];
             } else {
-                bucket.push(fields[2]);
+                bucket.push(field2);
             }
             continue;
         }
 
-        if ( fields[0] === 'hlg0' ) {
-            this.highLowGenericHide[fields[1]] = true;
+        if ( field0 === 'hlg0' ) {
+            this.highLowGenericHide[field1] = true;
             this.highLowGenericHideCount += 1;
             continue;
         }
 
-        if ( fields[0] === 'hlg1' ) {
-            this.highLowGenericDonthide[fields[1]] = true;
+        if ( field0 === 'hlg1' ) {
+            this.highLowGenericDonthide[field1] = true;
             this.highLowGenericDonthideCount += 1;
             continue;
         }
 
-        if ( fields[0] === 'hmg0' ) {
-            if ( Array.isArray(this.highMediumGenericHide[fields[1]]) ) {
-                this.highMediumGenericHide[fields[1]].push(fields[2]);
+        if ( field0 === 'hmg0' ) {
+            field2 = reNextCompiledToken.exec(line)[0];
+            if ( Array.isArray(this.highMediumGenericHide[field1]) ) {
+                this.highMediumGenericHide[field1].push(field2);
             } else {
-                this.highMediumGenericHide[fields[1]] = [fields[2]];
+                this.highMediumGenericHide[field1] = [field2];
             }
             this.highMediumGenericHideCount += 1;
             continue;
         }
 
-        if ( fields[0] === 'hmg1' ) {
-            if ( Array.isArray(this.highMediumGenericDonthide[fields[1]]) ) {
-                this.highMediumGenericDonthide[fields[1]].push(fields[2]);
+        if ( field0 === 'hmg1' ) {
+            field2 = reNextCompiledToken.exec(line)[0];
+            if ( Array.isArray(this.highMediumGenericDonthide[field1]) ) {
+                this.highMediumGenericDonthide[field1].push(field2);
             } else {
-                this.highMediumGenericDonthide[fields[1]] = [fields[2]];
+                this.highMediumGenericDonthide[field1] = [field2];
             }
             this.highMediumGenericDonthideCount += 1;
             continue;
         }
 
-        if ( fields[0] === 'hhg0' ) {
-            this.highHighGenericHideArray.push(fields[1]);
+        if ( field0 === 'hhg0' ) {
+            this.highHighGenericHideArray.push(field1);
             this.highHighGenericHideCount += 1;
             continue;
         }
 
-        if ( fields[0] === 'hhg1' ) {
-            this.highHighGenericDonthideArray.push(fields[1]);
+        if ( field0 === 'hhg1' ) {
+            this.highHighGenericDonthideArray.push(field1);
             this.highHighGenericDonthideCount += 1;
             continue;
         }
